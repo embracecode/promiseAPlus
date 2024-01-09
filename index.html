@@ -10,23 +10,44 @@
         let pro = new Promise((resolve, reject) => {
             resolve(1)
         })
-        console.log(pro);
-        pro.then(res => {
-            console.log(res, 'res');
-        }, rej => {
-            console.log(res, 'rej');
-        }).then((res) => {
-            console.log(res, 2222);
-        })
     </script>
     <script src="./promise.js"></script>
     <script>
         let promise = new MyPromise((resolve, reject) => {
             setTimeout(() => {
-                resolve(1)
+                reject(1)
             })
         })
-        console.log(promise);
+        promise.then(res => {
+            console.log(res, 'res的结果');
+        }).catch(err => {
+            console.log(err, 'err的结果');
+        }).finally(() => {
+            console.log('efin的结果');
+        })
+        let Allres = MyPromise.all([1,2,3])
+        Allres.then(res => {
+            console.log(res, 'allres的结果')
+        })
+        let p1 = new MyPromise((resolve, reject) => {
+            setTimeout(() => {
+                resolve(100)
+            },100)
+        })
+        let p2 = new MyPromise((resolve, reject) => {
+            setTimeout(() => {
+                resolve(200)
+            },200)
+        })
+        let p3 = new MyPromise((resolve, reject) => {
+            setTimeout(() => {
+                resolve(300)
+            },300)
+        })
+        let racepro = MyPromise.race([p1, p2, p3])
+        racepro.then(res => {
+            console.log(res, 'race的结果');
+        })
     </script>
 </body>
 </html>

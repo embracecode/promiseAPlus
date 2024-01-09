@@ -3,29 +3,21 @@ const PENDING = 'pending'
 const REJECTED = 'rejected'
 const FULFILLED = 'fulfilled'
 
-// 保存then函数中的微队列
-const qunen = []
-
-function resolve(params) {
-    const change = changeState.bind(this)
-    change(FULFILLED, params)
+function _resolve(params) {
+    changeState.call(this, FULFILLED, params)
 }
 
-function reject(params) {
-    const change = changeState.bind(this)
-    change(REJECTED, params)
+function _reject(params) {
+    changeState.call(this, REJECTED, params)
 }
 function changeState(state, params) {
-    console.log(this, 'changeState', this.State);
     if (this.State !== PENDING) {
         return
     }
     this.State = state
     this.Result = params
     // 处理链式调用then
-    // const _runQunen = runQunen.bind(this)
-    // _runQunen()
-    bindFn(runQunen, this)
+    runQunen.call(this)
 }
 // 创建微任务
 function creareMicro(cb) {
@@ -51,22 +43,18 @@ function isPromise(obj) {
 
 // 执行微任务队列
 function runQunen() {
-    console.log(this, 'runqunen', qunen);
     if (this.State === PENDING) {
         return
     }
-    while (qunen[0]) {
-        const task = qunen[0]
-        // const _runTask = runTask.bind(this)
-        // _runTask(task)
-        bindFn(runTask, this, task)
-        qunen.shift()
+    while (this.qunen[0]) {
+        const task = this.qunen[0]
+        runTask.call(this, task)
+        this.qunen.shift()
     }
 }
 
-function runTask({State, execute, resolve, reject}) {
+function runTask({ State, execute, resolve, reject }) {
     creareMicro(() => {
-        console.log(this, 'runtask');
         // 标识当前状态与改变的状态不一致 无需执行
         if (State !== this.State) {
             return
@@ -80,6 +68,7 @@ function runTask({State, execute, resolve, reject}) {
             } else {
                 reject(this.Result)
             }
+            return
         }
 
         try {
@@ -93,53 +82,112 @@ function runTask({State, execute, resolve, reject}) {
         } catch (error) {
             reject(error)
         }
-
     })
 }
-
-
-function bindFn(fn, thisArg, params) {
-    if (typeof fn !== 'function') {
-        console.warn(`${fn} is not function in 'bindFn' methods`)
-        return
-    }
-    const res = fn.bind(thisArg)
-    return  params ? res(params) : res()
-}
-
 
 class MyPromise {
     constructor(execute) {
         this.State = PENDING
         this.Result = undefined
+        this.qunen = []
         try {
-            execute(resolve.bind(this), reject.bind(this))
+            execute(_resolve.bind(this), _reject.bind(this))
         } catch (error) {
-            // const _reject = reject.bind(this)
-            // _reject(error)
-            bindFn(reject, this, error)
+            _reject.call(this, error)
         }
     }
     then(OnResolve, OnRejected) {
         return new MyPromise((resolve, reject) => {
-            qunen.push({
+            this.qunen.push({
                 State: FULFILLED,
                 execute: OnResolve,
                 resolve,
                 reject
             })
-            qunen.push({
+            this.qunen.push({
                 State: REJECTED,
                 execute: OnRejected,
                 resolve,
                 reject
             })
-            // const _runQunen = runQunen.bind(this)
-            // _runQunen()
-            bindFn(runQunen, this)
+            runQunen.call(this)
         })
     }
     catch(OnRejected) {
         return this.then(undefined, OnRejected)
     }
+    finally(onFinally) {
+        return this.then(res => {
+            MyPromise.resolve(onFinally()).then(() => res)
+        }, error => {
+            MyPromise.resolve(onFinally()).then(() => {
+                throw error
+            })
+        })
+    }
+}
+
+
+MyPromise.resolve = function (params) {
+    if (params instanceof Promise) {
+        return params
+    }
+    if (isPromise(params)) {
+        return new MyPromise((resolve, reject) => {
+            params.then(resolve, reject)
+        })
+    } else {
+        return new MyPromise(resolve => {
+            resolve(params)
+        })
+    }
+}
+
+MyPromise.reject = function (params) {
+    return new MyPromise((resolve, reject) => {
+        reject(params)
+    })
+}
+
+MyPromise.all = function (params) {
+    // 判断传入的参数是否是可迭代的
+    if (typeof params[Symbol.iterator] !== 'function') {
+        return new Error(`${params} is not iterable (cannot read property Symbol(Symbol.iterator))
+        at Function.all (<anonymous>)`)
+    }
+    const result = new Array(params.length)
+    let marker = 0 
+    return new MyPromise((resolve, reject) => {
+        for (let item of params) {
+            let index = params.indexOf(item)
+            if (!isPromise(item)) {
+                item = MyPromise.resolve(item)
+            }
+            item.then(res => {
+                marker++
+                result[index] = res
+                if (result.length === marker) {
+                    resolve(result)
+                }
+            }, error => {
+                reject(error)
+            })
+        }
+    })
+}
+
+MyPromise.race = function (params) {
+    // 判断传入的参数是否是可迭代的
+    if (typeof params[Symbol.iterator] !== 'function') {
+        return new Error(`${params} is not iterable (cannot read property Symbol(Symbol.iterator))
+        at Function.all (<anonymous>)`)
+    }
+    return new MyPromise((resolve, reject) => {
+        for (let item of params) {
+            if (!isPromise(item)) {
+                item = MyPromise.resolve(item)
+            }
+            item.then(resolve, reject)
+        }
+    })
 }
